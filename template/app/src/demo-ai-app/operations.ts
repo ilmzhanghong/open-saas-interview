@@ -1,6 +1,5 @@
-import type { PrismaPromise } from "@prisma/client";
 import OpenAI from "openai";
-import type { GptResponse, Task, User } from "wasp/entities";
+import type { GptResponse, Task } from "wasp/entities";
 import { env, HttpError, prisma } from "wasp/server";
 import type {
   CreateTask,
@@ -11,11 +10,19 @@ import type {
   UpdateTask,
 } from "wasp/server/operations";
 import * as z from "zod";
-import { SubscriptionStatus } from "../payment/plans";
+import { createProtectionDb } from "../ai-protection/db";
+import { ProtectionError } from "../ai-protection/errors";
+import { createRateLimitStore } from "../ai-protection/rate-limit";
+import { protectAiOperation } from "../ai-protection/protect";
 import { ensureArgsSchemaOrThrowHttpError } from "../server/validation";
 import { GeneratedSchedule, generatedScheduleSchema } from "./schedule";
 
 const openAi = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+
+const rateLimiter = createRateLimitStore(
+  env.RATE_LIMIT_STORE,
+  prisma.rateLimitCounter,
+);
 
 //#region Actions
 const generateGptResponseInputSchema = z.object({
@@ -39,71 +46,58 @@ export const generateGptResponse: GenerateGptResponse<
     generateGptResponseInputSchema,
     rawArgs,
   );
+  const userId = context.user.id;
   const tasks = await context.entities.Task.findMany({
     where: {
       user: {
-        id: context.user.id,
+        id: userId,
       },
     },
   });
 
-  console.log("Calling open AI api");
-  const generatedSchedule = await generateScheduleWithGpt(tasks, hours);
-  if (generatedSchedule === null) {
-    throw new HttpError(
-      500,
-      "Encountered a problem in communication with OpenAI",
-    );
-  }
+  // Deterministic serialization: stable ordering so identical requests
+  // produce identical dedupe keys.
+  const parsedTasks = tasks
+    .map(({ description, time }) => ({ description, time }))
+    .sort((a, b) => a.description.localeCompare(b.description));
 
-  const createResponse = context.entities.GptResponse.create({
-    data: {
-      user: { connect: { id: context.user.id } },
-      content: JSON.stringify(generatedSchedule),
-    },
-  });
+  try {
+    return await protectAiOperation(
+      {
+        operationType: "generateSchedule",
+        quotaCost: 1,
+        rateLimit: { windowMs: 60_000, max: 10 },
+        dedupeTtlMs: 600_000,
+        inputToDedupeKey: () => JSON.stringify({ hours, tasks: parsedTasks }),
+        inputToLogText: () => JSON.stringify({ hours, tasks: parsedTasks }),
+      },
+      { db: createProtectionDb(context.entities), rateLimiter },
+      userId,
+      rawArgs,
+      async () => {
+        console.log("Calling open AI api");
+        const generatedSchedule = await generateScheduleWithGpt(tasks, hours);
+        if (generatedSchedule === null) {
+          throw new Error("Encountered a problem in communication with OpenAI");
+        }
 
-  const transactions: PrismaPromise<GptResponse | User>[] = [createResponse];
-
-  // We decrement the credits for users without an active subscription
-  // after using up tokens to get a daily plan from Chat GPT.
-  //
-  // This way, users don't feel cheated if something goes wrong.
-  // On the flipside, users can theoretically abuse this and spend more
-  // credits than they have, but the damage should be pretty limited.
-  //
-  // Think about which option you prefer for your app and edit the code accordingly.
-  if (!isUserSubscribed(context.user)) {
-    if (context.user.credits > 0) {
-      const decrementCredit = context.entities.User.update({
-        where: { id: context.user.id },
-        data: {
-          credits: {
-            decrement: 1,
+        await context.entities.GptResponse.create({
+          data: {
+            user: { connect: { id: userId } },
+            content: JSON.stringify(generatedSchedule),
           },
-        },
-      });
-      transactions.push(decrementCredit);
-    } else {
-      throw new HttpError(
-        402,
-        "User has no subscription and is out of credits",
-      );
+        });
+
+        return generatedSchedule;
+      },
+    );
+  } catch (e) {
+    if (e instanceof ProtectionError) {
+      throw new HttpError(e.statusCode, e.message, e.data);
     }
+    throw e;
   }
-
-  console.log("Decrementing credits and saving response");
-  await prisma.$transaction(transactions);
-
-  return generatedSchedule;
 };
-
-function isUserSubscribed(user: User) {
-  return (
-    user.subscriptionStatus === SubscriptionStatus.Active ||
-    user.subscriptionStatus === SubscriptionStatus.CancelAtPeriodEnd
-  );
-}
 
 const createTaskInputSchema = z.object({
   description: z.string().nonempty(),

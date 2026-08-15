@@ -1,6 +1,7 @@
 import { defineEnvValidationSchema } from "wasp/env";
 
 import * as z from "zod";
+import { aiProtectionEnvSchema } from "./ai-protection/env";
 import { googleAnalyticsEnvSchema, plausibleEnvSchema } from "./analytics/env";
 import { authEnvSchema } from "./auth/env";
 import { demoAiAppEnvSchema } from "./demo-ai-app/env";
@@ -18,6 +19,7 @@ import { stripeEnvSchema } from "./payment/stripe/env";
 // to also remove its env schema import and `...schema.shape` below.
 export const serverEnvValidationSchema = defineEnvValidationSchema(
   z.object({
+    ...aiProtectionEnvSchema.shape,
     ...authEnvSchema.shape,
     ...stripeEnvSchema.shape,
     ...lemonSqueezyEnvSchema.shape,

@@ -4,7 +4,11 @@ import type { RateLimitCounterModel } from "./db";
 
 function makeFakeCounter(initial = 0) {
   let count = initial;
-  const upsert = vi.fn(async () => ({ count: ++count }));
+  const upsert = vi.fn(
+    async (_args: Parameters<RateLimitCounterModel["upsert"]>[0]) => ({
+      count: ++count,
+    }),
+  );
   const counter: RateLimitCounterModel = { upsert };
   return { counter, upsert, getCount: () => count };
 }
@@ -31,7 +35,7 @@ describe("DbRateLimitStore", () => {
     const { counter, upsert } = makeFakeCounter();
     const store = new DbRateLimitStore(counter);
     await store.consume("k", 1000, 3);
-    const args = upsert.mock.calls[0][0];
+    const args = upsert.mock.calls[0]![0]!;
     expect(args.where.key_windowStart.key).toBe("k");
     expect(args.where.key_windowStart.windowStart).toBe(
       BigInt(Math.floor(now / 1000) * 1000),
