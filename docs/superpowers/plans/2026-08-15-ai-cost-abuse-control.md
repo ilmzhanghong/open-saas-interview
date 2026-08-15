@@ -25,6 +25,7 @@
 ### Task 1: 数据模型与迁移
 
 **Files:**
+
 - Modify: `template/app/schema.prisma`（追加两个 model）
 - Modify: `template/app/src/demo-ai-app/demo-ai-app.wasp.ts`（entities 声明）
 
@@ -96,6 +97,7 @@ git commit -m "feat: add AIOperationLog and RateLimitCounter models"
 ### Task 2: vitest 配置 + dedup 模块（TDD）
 
 **Files:**
+
 - Create: `template/app/vitest.config.ts`
 - Modify: `template/app/package.json`（scripts.test）
 - Create: `template/app/src/ai-protection/dedup.ts`
@@ -209,6 +211,7 @@ git commit -m "feat: add dedupe key and TTL window helpers"
 ### Task 3: 保护错误与配置（TDD）
 
 **Files:**
+
 - Create: `template/app/src/ai-protection/errors.ts`
 - Create: `template/app/src/ai-protection/config.ts`
 - Test: `template/app/src/ai-protection/errors.test.ts`
@@ -286,7 +289,10 @@ export interface AiOperationConfig<TArgs = unknown> {
 
 export const DEFAULT_QUOTA_COST = 1;
 export const DEFAULT_DEDUPE_TTL_MS = 600_000;
-export const DEFAULT_RATE_LIMIT: RateLimitConfig = { windowMs: 60_000, max: 10 };
+export const DEFAULT_RATE_LIMIT: RateLimitConfig = {
+  windowMs: 60_000,
+  max: 10,
+};
 ```
 
 - [ ] **Step 4: 运行测试确认通过**
@@ -307,6 +313,7 @@ git commit -m "feat: add protection error and per-operation config"
 ### Task 4: 内存限流器（TDD）
 
 **Files:**
+
 - Create: `template/app/src/ai-protection/rate-limit/types.ts`
 - Create: `template/app/src/ai-protection/rate-limit/in-memory.ts`
 - Test: `template/app/src/ai-protection/rate-limit/in-memory.test.ts`
@@ -396,9 +403,7 @@ export class InMemoryRateLimitStore implements RateLimitStore {
     max: number,
   ): Promise<RateLimitConsumeResult> {
     const now = Date.now();
-    const window = (this.hits.get(key) ?? []).filter(
-      (t) => now - t < windowMs,
-    );
+    const window = (this.hits.get(key) ?? []).filter((t) => now - t < windowMs);
     if (window.length >= max) {
       this.hits.set(key, window);
       return { allowed: false, retryAfterMs: windowMs - (now - window[0]) };
@@ -428,6 +433,7 @@ git commit -m "feat: add in-memory sliding window rate limiter"
 ### Task 5: DB 限流器（TDD）
 
 **Files:**
+
 - Create: `template/app/src/ai-protection/rate-limit/db.ts`
 - Create: `template/app/src/ai-protection/rate-limit/index.ts`
 - Test: `template/app/src/ai-protection/rate-limit/db.test.ts`
@@ -567,6 +573,7 @@ git commit -m "feat: add db-backed fixed-window rate limiter"
 ### Task 6: ProtectionDb 门面（TDD）
 
 **Files:**
+
 - Create: `template/app/src/ai-protection/db.ts`
 - Test: `template/app/src/ai-protection/db.test.ts`
 
@@ -760,7 +767,9 @@ type LogDelegate = Pick<
 
 function isUniqueViolation(e: unknown): boolean {
   return (
-    typeof e === "object" && e !== null && (e as { code?: string }).code === "P2002"
+    typeof e === "object" &&
+    e !== null &&
+    (e as { code?: string }).code === "P2002"
   );
 }
 
@@ -889,6 +898,7 @@ git commit -m "feat: add ProtectionDb facade with claim/reserve/refund operation
 ### Task 7: protectAiOperation 编排器（TDD）
 
 **Files:**
+
 - Create: `template/app/src/ai-protection/protect.ts`
 - Test: `template/app/src/ai-protection/protect.test.ts`
 
@@ -927,7 +937,10 @@ function makeFakeDb(overrides: Partial<ProtectionDb> = {}): ProtectionDb {
       subscriptionStatus: null,
     })),
     claimDedupe: vi.fn(
-      async (): Promise<DedupeClaimResult> => ({ kind: "claimed", id: "claim-1" }),
+      async (): Promise<DedupeClaimResult> => ({
+        kind: "claimed",
+        id: "claim-1",
+      }),
     ),
     takeOverFailedClaim: vi.fn(async () => true),
     reserveCredits: vi.fn(async () => true),
@@ -989,28 +1002,24 @@ describe("protectAiOperation", () => {
       consume: vi.fn(async () => ({ allowed: false, retryAfterMs: 500 })),
     };
     await expect(
-      protectAiOperation(
-        makeConfig(),
-        { db, rateLimiter },
-        "u1",
-        {},
-        execute,
-      ),
+      protectAiOperation(makeConfig(), { db, rateLimiter }, "u1", {}, execute),
     ).rejects.toMatchObject({ statusCode: 429, retryAfterMs: 500 });
     expect(execute).not.toHaveBeenCalled();
   });
 
   it("replays completed dedupe hits without executing or reserving", async () => {
     const db = makeFakeDb({
-      claimDedupe: vi.fn(async (): Promise<DedupeClaimResult> => ({
-        kind: "conflict",
-        existing: {
-          id: "claim-0",
-          status: "completed",
-          outputText: '{"schedule":"yesterday"}',
-          createdAt: new Date(),
-        },
-      })),
+      claimDedupe: vi.fn(
+        async (): Promise<DedupeClaimResult> => ({
+          kind: "conflict",
+          existing: {
+            id: "claim-0",
+            status: "completed",
+            outputText: '{"schedule":"yesterday"}',
+            createdAt: new Date(),
+          },
+        }),
+      ),
     });
     const execute = vi.fn(async () => "never");
     const result = await protectAiOperation(
@@ -1027,15 +1036,17 @@ describe("protectAiOperation", () => {
 
   it("throws 429 when the dedupe claim is in progress", async () => {
     const db = makeFakeDb({
-      claimDedupe: vi.fn(async (): Promise<DedupeClaimResult> => ({
-        kind: "conflict",
-        existing: {
-          id: "claim-0",
-          status: "in_progress",
-          outputText: null,
-          createdAt: new Date(),
-        },
-      })),
+      claimDedupe: vi.fn(
+        async (): Promise<DedupeClaimResult> => ({
+          kind: "conflict",
+          existing: {
+            id: "claim-0",
+            status: "in_progress",
+            outputText: null,
+            createdAt: new Date(),
+          },
+        }),
+      ),
     });
     await expect(
       protectAiOperation(
@@ -1050,15 +1061,17 @@ describe("protectAiOperation", () => {
 
   it("takes over failed claims and proceeds", async () => {
     const db = makeFakeDb({
-      claimDedupe: vi.fn(async (): Promise<DedupeClaimResult> => ({
-        kind: "conflict",
-        existing: {
-          id: "claim-0",
-          status: "failed",
-          outputText: null,
-          createdAt: new Date(),
-        },
-      })),
+      claimDedupe: vi.fn(
+        async (): Promise<DedupeClaimResult> => ({
+          kind: "conflict",
+          existing: {
+            id: "claim-0",
+            status: "failed",
+            outputText: null,
+            createdAt: new Date(),
+          },
+        }),
+      ),
     });
     const execute = vi.fn(async () => "ok");
     const result = await protectAiOperation(
@@ -1069,24 +1082,23 @@ describe("protectAiOperation", () => {
       execute,
     );
     expect(db.takeOverFailedClaim).toHaveBeenCalledWith("claim-0");
-    expect(db.markCompleted).toHaveBeenCalledWith(
-      "claim-0",
-      expect.anything(),
-    );
+    expect(db.markCompleted).toHaveBeenCalledWith("claim-0", expect.anything());
     expect(result).toBe("ok");
   });
 
   it("throws 429 when the failed-claim takeover races", async () => {
     const db = makeFakeDb({
-      claimDedupe: vi.fn(async (): Promise<DedupeClaimResult> => ({
-        kind: "conflict",
-        existing: {
-          id: "claim-0",
-          status: "failed",
-          outputText: null,
-          createdAt: new Date(),
-        },
-      })),
+      claimDedupe: vi.fn(
+        async (): Promise<DedupeClaimResult> => ({
+          kind: "conflict",
+          existing: {
+            id: "claim-0",
+            status: "failed",
+            outputText: null,
+            createdAt: new Date(),
+          },
+        }),
+      ),
       takeOverFailedClaim: vi.fn(async () => false),
     });
     await expect(
@@ -1332,6 +1344,7 @@ git commit -m "feat: add protectAiOperation orchestrator"
 ### Task 8: Wasp 集成（env / entities / operations）
 
 **Files:**
+
 - Create: `template/app/src/ai-protection/env.ts`
 - Modify: `template/app/src/env.ts`（merge aiProtectionEnvSchema）
 - Modify: `template/app/src/demo-ai-app/operations.ts`（重写 generateGptResponse）
@@ -1373,7 +1386,10 @@ import { protectAiOperation } from "../ai-protection/protect";
 3. `const openAi = ...` 之后新增：
 
 ```ts
-const rateLimiter = createRateLimitStore(env.RATE_LIMIT_STORE, prisma.rateLimitCounter);
+const rateLimiter = createRateLimitStore(
+  env.RATE_LIMIT_STORE,
+  prisma.rateLimitCounter,
+);
 ```
 
 4. 将 `generateGptResponse` 函数体整体替换为：
@@ -1506,6 +1522,7 @@ git commit -m "chore: fix lint and formatting"
 ### Task 10: 并发冒烟脚本 + 端到端验证
 
 **Files:**
+
 - Create: `template/app/scripts/concurrency-smoke.mjs`
 
 - [ ] **Step 1: 写冒烟脚本**
@@ -1611,20 +1628,28 @@ if (signup.status !== 200) {
 const prisma = new PrismaClient();
 const identity = await prisma.authIdentity.findUniqueOrThrow({
   where: {
-    providerName_providerUserId: { providerName: "email", providerUserId: email },
+    providerName_providerUserId: {
+      providerName: "email",
+      providerUserId: email,
+    },
   },
 });
 const providerData = JSON.parse(identity.providerData);
 providerData.isEmailVerified = true;
 await prisma.authIdentity.update({
   where: {
-    providerName_providerUserId: { providerName: "email", providerUserId: email },
+    providerName_providerUserId: {
+      providerName: "email",
+      providerUserId: email,
+    },
   },
   data: { providerData: JSON.stringify(providerData) },
 });
 const user = await prisma.user.findFirstOrThrow({
   where: {
-    auth: { identities: { some: { providerName: "email", providerUserId: email } } },
+    auth: {
+      identities: { some: { providerName: "email", providerUserId: email } },
+    },
   },
 });
 console.log(`[auth] user ${email} verified (initial credits=${user.credits})`);
@@ -1636,14 +1661,13 @@ if (login.status !== 200 || !login.body?.sessionId) {
 const authHeaders = { authorization: `Bearer ${login.body.sessionId}` };
 console.log("[auth] logged in");
 
-const call = (hours) => post("/operations/generate-gpt-response", { hours }, authHeaders);
+const call = (hours) =>
+  post("/operations/generate-gpt-response", { hours }, authHeaders);
 
 // --- 3. Phase 1: 20 concurrent identical requests ---------------------------
 console.log("[phase1] firing 20 concurrent identical requests (hours=4)...");
 const results = await Promise.all(Array.from({ length: 20 }, () => call(4)));
-const hardFailures = results.filter(
-  (r) => r.status >= 500 || r.status === 402,
-);
+const hardFailures = results.filter((r) => r.status >= 500 || r.status === 402);
 if (hardFailures.length > 0) {
   throw new Error(
     `phase1: ${hardFailures.length} hard failures: ${JSON.stringify(hardFailures.slice(0, 3))}`,
@@ -1662,7 +1686,9 @@ if (retry.status !== 200) {
   throw new Error(`retry: expected 200 replay, got ${retry.status}`);
 }
 if (aiCalls !== 1) {
-  throw new Error(`retry: dedupe replay should not call AI, got ${aiCalls} calls`);
+  throw new Error(
+    `retry: dedupe replay should not call AI, got ${aiCalls} calls`,
+  );
 }
 console.log("[retry] PASS: identical request replayed, still 1 AI call");
 
@@ -1686,7 +1712,9 @@ if (updated.credits !== user.credits - 1) {
 console.log(`[credits] PASS: ${user.credits} -> ${updated.credits}`);
 
 // --- 7. Cleanup -------------------------------------------------------------
-const auth = await prisma.auth.findUniqueOrThrow({ where: { userId: user.id } });
+const auth = await prisma.auth.findUniqueOrThrow({
+  where: { userId: user.id },
+});
 await prisma.auth.delete({ where: { id: auth.id } });
 await prisma.user.delete({ where: { id: user.id } });
 await prisma.$disconnect();
@@ -1697,17 +1725,21 @@ console.log("ALL SMOKE TESTS PASSED");
 - [ ] **Step 2: 重启 wasp start（带 stub OpenAI 环境变量）**
 
 Run:
+
 ```bash
-pkill -f "wasp-bin start"; sleep 2
+pkill -f "wasp-bin start"
+sleep 2
 cd /Users/Kevin/kevin/open-saas-interview/template/app
 export PATH="/Users/Kevin/.nvm/versions/node/v24.14.1/bin:$PATH"
-OPENAI_BASE_URL=http://localhost:8787/v1 OPENAI_API_KEY=sk-local-placeholder wasp start  # 后台运行
+OPENAI_BASE_URL=http://localhost:8787/v1 OPENAI_API_KEY=sk-local-placeholder wasp start # 后台运行
 ```
+
 Wait ~60s 后确认日志：`[Server] Server listening on port 3001`
 
 - [ ] **Step 3: 运行冒烟脚本**
 
 Run:
+
 ```bash
 cd /Users/Kevin/kevin/open-saas-interview/template/app
 export PATH="/Users/Kevin/.nvm/versions/node/v24.14.1/bin:$PATH"
@@ -1716,6 +1748,7 @@ node scripts/concurrency-smoke.mjs
 ```
 
 Expected:
+
 ```
 [phase1] PASS: 20 requests -> 1 AI call (...)
 [retry] PASS: identical request replayed, still 1 AI call
@@ -1733,11 +1766,13 @@ Expected: 1 行 completed + 若干行 dedupe 冲突记录（无实际 AI 调用�
 - [ ] **Step 5: 恢复 wasp start 正常环境**
 
 Run:
+
 ```bash
-pkill -f "wasp-bin start"; sleep 2
+pkill -f "wasp-bin start"
+sleep 2
 cd /Users/Kevin/kevin/open-saas-interview/template/app
 export PATH="/Users/Kevin/.nvm/versions/node/v24.14.1/bin:$PATH"
-wasp start  # 后台运行，恢复无 stub 环境
+wasp start # 后台运行，恢复无 stub 环境
 ```
 
 - [ ] **Step 6: Commit**
@@ -1752,6 +1787,7 @@ git commit -m "test: add concurrency smoke script for AI protection"
 ### Task 11: 文档 + PR 准备
 
 **Files:**
+
 - Modify: `template/app/README.md`（追加 AI protection 说明）
 - Create: `PR_DESCRIPTION.md`（PR 说明草稿，供用户审阅）
 
@@ -1759,7 +1795,7 @@ git commit -m "test: add concurrency smoke script for AI protection"
 
 `template/app/README.md` 末尾追加：
 
-```markdown
+````markdown
 ## AI Operation Protection
 
 `generateGptResponse` runs through a reusable protection layer (`src/ai-protection/`):
@@ -1774,11 +1810,14 @@ quota reserve-commit, rate limiting, prompt deduplication and call logging.
   completed / failed).
 
 Run the concurrency smoke test:
+
 ```bash
 export DATABASE_URL=$(sed -n 's/^DATABASE_URL=//p' .wasp/out/server/.env)
-node scripts/concurrency-smoke.mjs   # requires wasp start with OPENAI_BASE_URL stub, see script header
+node scripts/concurrency-smoke.mjs # requires wasp start with OPENAI_BASE_URL stub, see script header
 ```
-```
+````
+
+````
 
 - [ ] **Step 2: 写 PR 说明草稿**
 
@@ -1826,18 +1865,19 @@ node scripts/concurrency-smoke.mjs   # requires wasp start with OPENAI_BASE_URL 
 - Redis 限流存储实现
 - Idempotency-Key 严格幂等协议（当前去重基于 prompt 内容）
 - token 用量与成本估算落库（模型已预留 tokensUsed/costEstimate 字段）
-```
+````
 
 - [ ] **Step 3: 最终验证**
 
 Run:
+
 ```bash
 cd /Users/Kevin/kevin/open-saas-interview
 export PATH="/Users/Kevin/.nvm/versions/node/v24.14.1/bin:$PATH"
 npm run lint && npm run prettier:check
 cd template/app && npm test
-git status --short   # 确认无遗漏文件
-git log --oneline main..HEAD   # 确认提交历史干净
+git status --short           # 确认无遗漏文件
+git log --oneline main..HEAD # 确认提交历史干净
 ```
 
 Expected: 全部通过；提交历史为 11 个功能提交（+2 docs 提交）

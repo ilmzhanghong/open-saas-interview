@@ -1,6 +1,7 @@
 # Build outputs.
 .wasp/
 dist/
+**/.astro/
 
 # Open SaaS app diff folder.
 app_diff/

@@ -1,6 +1,6 @@
 import { SubscriptionStatus } from "../payment/plans";
-import { DEFAULT_QUOTA_COST } from "./config";
 import type { AiOperationConfig } from "./config";
+import { DEFAULT_QUOTA_COST } from "./config";
 import type { ProtectionDb } from "./db";
 import { buildDedupeKey, computeDedupeWindow } from "./dedup";
 import { ProtectionError } from "./errors";

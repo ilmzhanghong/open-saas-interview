@@ -9,9 +9,7 @@ export class InMemoryRateLimitStore implements RateLimitStore {
     max: number,
   ): Promise<RateLimitConsumeResult> {
     const now = Date.now();
-    const window = (this.hits.get(key) ?? []).filter(
-      (t) => now - t < windowMs,
-    );
+    const window = (this.hits.get(key) ?? []).filter((t) => now - t < windowMs);
     if (window.length >= max) {
       this.hits.set(key, window);
       return { allowed: false, retryAfterMs: windowMs - (now - window[0]) };

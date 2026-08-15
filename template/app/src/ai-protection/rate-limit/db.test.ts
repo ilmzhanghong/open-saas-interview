@@ -1,14 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
-import { DbRateLimitStore } from "./db";
 import type { RateLimitCounterModel } from "./db";
+import { DbRateLimitStore } from "./db";
 
 function makeFakeCounter(initial = 0) {
   let count = initial;
-  const upsert = vi.fn(
-    async (_args: Parameters<RateLimitCounterModel["upsert"]>[0]) => ({
-      count: ++count,
-    }),
-  );
+  const upsert = vi.fn<RateLimitCounterModel["upsert"]>(async (args) => ({
+    count: ++count,
+    ...args,
+  }));
   const counter: RateLimitCounterModel = { upsert };
   return { counter, upsert, getCount: () => count };
 }

@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import { SubscriptionStatus } from "../payment/plans";
 import type { AiOperationConfig } from "./config";
 import type { DedupeClaimResult, ProtectionDb } from "./db";
-import { ProtectionError } from "./errors";
 import { protectAiOperation } from "./protect";
 import type { RateLimitStore } from "./rate-limit/types";
 
@@ -28,7 +27,10 @@ function makeFakeDb(overrides: Partial<ProtectionDb> = {}): ProtectionDb {
       subscriptionStatus: null,
     })),
     claimDedupe: vi.fn(
-      async (): Promise<DedupeClaimResult> => ({ kind: "claimed", id: "claim-1" }),
+      async (): Promise<DedupeClaimResult> => ({
+        kind: "claimed",
+        id: "claim-1",
+      }),
     ),
     takeOverFailedClaim: vi.fn(async () => true),
     reserveCredits: vi.fn(async () => true),
@@ -90,28 +92,24 @@ describe("protectAiOperation", () => {
       consume: vi.fn(async () => ({ allowed: false, retryAfterMs: 500 })),
     };
     await expect(
-      protectAiOperation(
-        makeConfig(),
-        { db, rateLimiter },
-        "u1",
-        {},
-        execute,
-      ),
+      protectAiOperation(makeConfig(), { db, rateLimiter }, "u1", {}, execute),
     ).rejects.toMatchObject({ statusCode: 429, retryAfterMs: 500 });
     expect(execute).not.toHaveBeenCalled();
   });
 
   it("replays completed dedupe hits without executing or reserving", async () => {
     const db = makeFakeDb({
-      claimDedupe: vi.fn(async (): Promise<DedupeClaimResult> => ({
-        kind: "conflict",
-        existing: {
-          id: "claim-0",
-          status: "completed",
-          outputText: '{"schedule":"yesterday"}',
-          createdAt: new Date(),
-        },
-      })),
+      claimDedupe: vi.fn(
+        async (): Promise<DedupeClaimResult> => ({
+          kind: "conflict",
+          existing: {
+            id: "claim-0",
+            status: "completed",
+            outputText: '{"schedule":"yesterday"}',
+            createdAt: new Date(),
+          },
+        }),
+      ),
     });
     const execute = vi.fn(async () => "never");
     const result = await protectAiOperation(
@@ -128,15 +126,17 @@ describe("protectAiOperation", () => {
 
   it("throws 429 when the dedupe claim is in progress", async () => {
     const db = makeFakeDb({
-      claimDedupe: vi.fn(async (): Promise<DedupeClaimResult> => ({
-        kind: "conflict",
-        existing: {
-          id: "claim-0",
-          status: "in_progress",
-          outputText: null,
-          createdAt: new Date(),
-        },
-      })),
+      claimDedupe: vi.fn(
+        async (): Promise<DedupeClaimResult> => ({
+          kind: "conflict",
+          existing: {
+            id: "claim-0",
+            status: "in_progress",
+            outputText: null,
+            createdAt: new Date(),
+          },
+        }),
+      ),
     });
     await expect(
       protectAiOperation(
@@ -151,15 +151,17 @@ describe("protectAiOperation", () => {
 
   it("takes over failed claims and proceeds", async () => {
     const db = makeFakeDb({
-      claimDedupe: vi.fn(async (): Promise<DedupeClaimResult> => ({
-        kind: "conflict",
-        existing: {
-          id: "claim-0",
-          status: "failed",
-          outputText: null,
-          createdAt: new Date(),
-        },
-      })),
+      claimDedupe: vi.fn(
+        async (): Promise<DedupeClaimResult> => ({
+          kind: "conflict",
+          existing: {
+            id: "claim-0",
+            status: "failed",
+            outputText: null,
+            createdAt: new Date(),
+          },
+        }),
+      ),
     });
     const execute = vi.fn(async () => "ok");
     const result = await protectAiOperation(
@@ -170,24 +172,23 @@ describe("protectAiOperation", () => {
       execute,
     );
     expect(db.takeOverFailedClaim).toHaveBeenCalledWith("claim-0");
-    expect(db.markCompleted).toHaveBeenCalledWith(
-      "claim-0",
-      expect.anything(),
-    );
+    expect(db.markCompleted).toHaveBeenCalledWith("claim-0", expect.anything());
     expect(result).toBe("ok");
   });
 
   it("throws 429 when the failed-claim takeover races", async () => {
     const db = makeFakeDb({
-      claimDedupe: vi.fn(async (): Promise<DedupeClaimResult> => ({
-        kind: "conflict",
-        existing: {
-          id: "claim-0",
-          status: "failed",
-          outputText: null,
-          createdAt: new Date(),
-        },
-      })),
+      claimDedupe: vi.fn(
+        async (): Promise<DedupeClaimResult> => ({
+          kind: "conflict",
+          existing: {
+            id: "claim-0",
+            status: "failed",
+            outputText: null,
+            createdAt: new Date(),
+          },
+        }),
+      ),
       takeOverFailedClaim: vi.fn(async () => false),
     });
     await expect(

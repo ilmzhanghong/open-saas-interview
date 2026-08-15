@@ -12,8 +12,8 @@ import type {
 import * as z from "zod";
 import { createProtectionDb } from "../ai-protection/db";
 import { ProtectionError } from "../ai-protection/errors";
-import { createRateLimitStore } from "../ai-protection/rate-limit";
 import { protectAiOperation } from "../ai-protection/protect";
+import { createRateLimitStore } from "../ai-protection/rate-limit";
 import { ensureArgsSchemaOrThrowHttpError } from "../server/validation";
 import { GeneratedSchedule, generatedScheduleSchema } from "./schedule";
 

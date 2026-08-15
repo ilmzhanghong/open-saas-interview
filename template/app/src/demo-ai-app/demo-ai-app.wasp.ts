@@ -15,7 +15,13 @@ export const demoAiAppSpec: Spec = [
 
   query(getGptResponses, { entities: ["User", "GptResponse"] }),
   action(generateGptResponse, {
-    entities: ["User", "Task", "GptResponse", "AIOperationLog", "RateLimitCounter"],
+    entities: [
+      "User",
+      "Task",
+      "GptResponse",
+      "AIOperationLog",
+      "RateLimitCounter",
+    ],
   }),
 
   query(getAllTasksByUser, { entities: ["Task"] }),

@@ -92,7 +92,11 @@ src/ai-protection/
 ```ts
 // store.ts
 interface RateLimitStore {
-  consume(key: string, windowMs: number, max: number): Promise<{
+  consume(
+    key: string,
+    windowMs: number,
+    max: number,
+  ): Promise<{
     allowed: boolean;
     retryAfterMs?: number;
   }>;
@@ -101,9 +105,9 @@ interface RateLimitStore {
 // config.ts
 interface AiOperationConfig {
   operationType: string;
-  quotaCost?: number;                    // 默认 1；订阅用户忽略
-  rateLimit?: { windowMs: number; max: number };   // 可选，不配则不限
-  dedupeTtlMs?: number;                  // 可选，不配则不去重
+  quotaCost?: number; // 默认 1；订阅用户忽略
+  rateLimit?: { windowMs: number; max: number }; // 可选，不配则不限
+  dedupeTtlMs?: number; // 可选，不配则不去重
 }
 
 // protect.ts
@@ -159,14 +163,14 @@ export const generateGptResponse = protectAiOperation(
 
 ## 错误语义
 
-| 场景 | 状态码 | 说明 |
-|---|---|---|
-| 限流超限 | 429 | `{ message, retryAfterMs }` |
-| 额度不足（非订阅） | 402 | 沿用现有文案风格 |
-| OpenAI 失败 | 502 | 已退款 + 日志记 failed |
-| 去重命中 | 200 | 回放结果（复用已存 outputText） |
-| 去重占位冲突（进行中/接管失败） | 429 | `{ message, retryAfterMs }`，稍后重试 |
-| 未登录 | 401 | 现有行为不变 |
+| 场景                            | 状态码 | 说明                                  |
+| ------------------------------- | ------ | ------------------------------------- |
+| 限流超限                        | 429    | `{ message, retryAfterMs }`           |
+| 额度不足（非订阅）              | 402    | 沿用现有文案风格                      |
+| OpenAI 失败                     | 502    | 已退款 + 日志记 failed                |
+| 去重命中                        | 200    | 回放结果（复用已存 outputText）       |
+| 去重占位冲突（进行中/接管失败） | 429    | `{ message, retryAfterMs }`，稍后重试 |
+| 未登录                          | 401    | 现有行为不变                          |
 
 ## 测试与验证
 

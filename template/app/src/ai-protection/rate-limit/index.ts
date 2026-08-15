@@ -1,5 +1,5 @@
-import { DbRateLimitStore } from "./db";
 import type { RateLimitCounterModel } from "./db";
+import { DbRateLimitStore } from "./db";
 import { InMemoryRateLimitStore } from "./in-memory";
 import type { RateLimitStore, RateLimitStoreKind } from "./types";
 
