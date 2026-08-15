@@ -27,18 +27,16 @@ describe("DbRateLimitStore", () => {
   });
 
   it("upserts with key and deterministic windowStart", async () => {
-    vi.useFakeTimers();
-    try {
-      const { counter, upsert } = makeFakeCounter();
-      const store = new DbRateLimitStore(counter);
-      await store.consume("k", 1000, 3);
-      const args = upsert.mock.calls[0][0];
-      expect(args.where.key_windowStart.key).toBe("k");
-      expect(args.where.key_windowStart.windowStart).toBe(0n);
-      expect(args.update).toEqual({ count: { increment: 1 } });
-      expect(args.create.count).toBe(1);
-    } finally {
-      vi.useRealTimers();
-    }
+    const now = Date.now();
+    const { counter, upsert } = makeFakeCounter();
+    const store = new DbRateLimitStore(counter);
+    await store.consume("k", 1000, 3);
+    const args = upsert.mock.calls[0][0];
+    expect(args.where.key_windowStart.key).toBe("k");
+    expect(args.where.key_windowStart.windowStart).toBe(
+      BigInt(Math.floor(now / 1000) * 1000),
+    );
+    expect(args.update).toEqual({ count: { increment: 1 } });
+    expect(args.create.count).toBe(1);
   });
 });
