@@ -17,7 +17,7 @@
  *   2. no 5xx / 402 responses
  *   3. retry after settle -> 200 replay, still 1 AI call
  *   4. 3 distinct requests -> 3 more AI calls
- *   5. user credits dropped by exactly 1 (reserve-commit, no overspend)
+ *   5. user credits dropped by exactly 4 (reserve-commit, no overspend)
  */
 import { PrismaClient } from "@prisma/client";
 import { createServer } from "node:http";
