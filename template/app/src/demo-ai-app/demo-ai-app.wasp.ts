@@ -14,7 +14,9 @@ export const demoAiAppSpec: Spec = [
   route("DemoAppRoute", "/demo-app", page(DemoAppPage, { authRequired: true })),
 
   query(getGptResponses, { entities: ["User", "GptResponse"] }),
-  action(generateGptResponse, { entities: ["User", "Task", "GptResponse"] }),
+  action(generateGptResponse, {
+    entities: ["User", "Task", "GptResponse", "AIOperationLog", "RateLimitCounter"],
+  }),
 
   query(getAllTasksByUser, { entities: ["Task"] }),
   action(createTask, { entities: ["Task"] }),

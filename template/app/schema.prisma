@@ -109,3 +109,31 @@ model ContactFormMessage {
   isRead                    Boolean         @default(false)
   repliedAt                 DateTime?
 }
+
+model AIOperationLog {
+  id            String   @id @default(uuid())
+  createdAt     DateTime @default(now())
+  userId        String
+  operationType String
+  dedupeKey     String // sha256(normalizedInput)
+  dedupeWindow  BigInt // TTL 桶起点：floor(nowMs / ttlMs) * ttlMs
+  inputText     String
+  outputText    String?
+  status        String // "in_progress" | "completed" | "failed"
+  tokensUsed    Int?
+  costEstimate  Float?
+  errorMessage  String?
+  latencyMs     Int?
+
+  @@unique([userId, operationType, dedupeKey, dedupeWindow])
+  @@index([userId, createdAt])
+}
+
+model RateLimitCounter {
+  id          Int    @id @default(autoincrement())
+  key         String // `${userId}:${operationType}`
+  windowStart BigInt // 固定窗口起点（ms）
+  count       Int
+
+  @@unique([key, windowStart])
+}
