@@ -19,8 +19,8 @@
  *   4. 3 distinct requests -> 3 more AI calls
  *   5. user credits dropped by exactly 1 (reserve-commit, no overspend)
  */
-import { createServer } from "node:http";
 import { PrismaClient } from "@prisma/client";
+import { createServer } from "node:http";
 import SuperJSON from "superjson";
 
 const API_URL = process.env.API_URL ?? "http://localhost:3001";
@@ -140,7 +140,9 @@ await prisma.user.update({
   where: { id: user.id },
   data: { credits: initialCredits },
 });
-console.log(`[auth] user ${email} verified (credits granted: ${initialCredits})`);
+console.log(
+  `[auth] user ${email} verified (credits granted: ${initialCredits})`,
+);
 
 const login = await post("/auth/email/login", { email, password });
 if (login.status !== 200 || !login.body?.sessionId) {
@@ -178,7 +180,9 @@ if (retry.status !== 200) {
   throw new Error(`retry: expected 200 replay, got ${retry.status}`);
 }
 if (aiCalls !== 1) {
-  throw new Error(`retry: dedupe replay should not call AI, got ${aiCalls} calls`);
+  throw new Error(
+    `retry: dedupe replay should not call AI, got ${aiCalls} calls`,
+  );
 }
 console.log("[retry] PASS: identical request replayed, still 1 AI call");
 
@@ -206,7 +210,9 @@ console.log(`[credits] PASS: ${initialCredits} -> ${updated.credits}`);
 // --- 7. Cleanup -------------------------------------------------------------
 // GptResponse rows reference the user with RESTRICT, so remove them first.
 await prisma.gptResponse.deleteMany({ where: { userId: user.id } });
-const auth = await prisma.auth.findUniqueOrThrow({ where: { userId: user.id } });
+const auth = await prisma.auth.findUniqueOrThrow({
+  where: { userId: user.id },
+});
 await prisma.auth.delete({ where: { id: auth.id } });
 await prisma.user.delete({ where: { id: user.id } });
 await prisma.$disconnect();
