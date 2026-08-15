@@ -42,15 +42,16 @@ model AIOperationLog {
   userId        String
   operationType String
   dedupeKey     String   // sha256(normalizedPrompt)
+  dedupeWindow  BigInt   // TTL 桶起点：floor(nowMs / ttlMs) * ttlMs
   inputText     String
   outputText    String?
-  status        String   // "in_progress" | "completed" | "failed" | "deduplicated"
+  status        String   // "in_progress" | "completed" | "failed"
   tokensUsed    Int?
   costEstimate  Float?   // tokens × 单价（可配置）
   errorMessage  String?
   latencyMs     Int?
 
-  @@unique([userId, operationType, dedupeKey, createdAt])
+  @@unique([userId, operationType, dedupeKey, dedupeWindow])
   @@index([userId, createdAt])
 }
 
@@ -66,8 +67,8 @@ model RateLimitCounter {
 
 要点：
 
-- **去重采用「先占后调」（claim-based）**：调用前先 INSERT 日志行（status=`in_progress`），唯一约束 `[userId, operationType, dedupeKey, createdAt]` 是并发仲裁者——插入成功者继续执行，冲突者回放已有结果或等待。这从根上防住并发双发（单纯「先查后调」在竞态下会漏）
-- TTL 窗口由 `createdAt` 时间范围判断（查最近记录是否在窗口内），无清理任务
+- **去重采用「先占后调」（claim-based）**：调用前先 INSERT 日志行（status=`in_progress`），唯一约束 `[userId, operationType, dedupeKey, dedupeWindow]` 是并发仲裁者——插入成功者继续执行，冲突者按已有行状态决策。这从根上防住并发双发（单纯「先查后调」在竞态下会漏）
+- **`dedupeWindow` 用确定性 TTL 桶**（`floor(nowMs/ttlMs)*ttlMs`）：同窗口内所有请求命中同一桶 → 唯一约束真正生效；窗口过后自然允许新调用（旧行仅作审计），无需清理任务
 - 额度复用现有 `User.credits`，不加新字段
 - `RateLimitCounter` 的 upsert + 原子比较实现多实例安全的计数
 
@@ -118,18 +119,21 @@ async function protectAiOperation<TArgs, TResult>(
 用户请求
   ├─ 1. 限流检查（store 接口）           → 超限 → 429 + retryAfterMs
   ├─ 2. 去重占位（INSERT 日志行 status=in_progress）
-  │     ├─ 冲突（唯一约束）→ 查已有记录
-  │     │     ├─ 已完成且窗口内 → 200 回放（status=deduplicated，不扣费）
-  │     │     └─ 进行中 → 429 + retryAfterMs（稍后重试）
+  │     ├─ 冲突（唯一约束）→ 查该桶已有行
+  │     │     ├─ completed → 200 回放（不扣费，不写新行）
+  │     │     ├─ in_progress → 429 + retryAfterMs（稍后重试）
+  │     │     └─ failed → 原子接管（updateMany where id+status=failed → in_progress）
+  │     │           ├─ 接管成功（count=1）→ 继续执行
+  │     │           └─ 接管失败（他人抢先）→ 429
   │     └─ 插入成功 → 继续执行（本请求成为该 key 的执行者）
-  ├─ 3. 额度预留（原子 UPDATE，事务开启）  → credits ≤ 0 → 402（回滚占位行）
+  ├─ 3. 额度预留（原子 UPDATE ... WHERE credits >= cost）→ 失败 → 占位行标记 failed + 402
   ├─ 4. 执行真实 AI 调用
-  │     ├─ 成功 → 更新占位行（completed）+ 提交事务
-  │     └─ 失败 → 退款（原子 +1）+ 更新占位行（failed）+ 回滚 → 502
+  │     ├─ 成功 → 更新占位行（completed, outputText）+ 返回
+  │     └─ 失败 → 退款（原子 +1）+ 更新占位行（failed, errorMessage）→ 502
   └─ 5. 返回结果
 ```
 
-顺序依据：限流最便宜放最前；去重占位是花钱路径的并发守门员；额度预留最后把关余额。去重占位与额度预留共用一个事务（占位行回滚时自动消失）。
+顺序依据：限流最便宜放最前；去重占位是花钱路径的并发守门员；额度预留最后把关余额。各步骤自身原子，占位行状态机（in_progress → completed/failed）记录全程；失败重试通过「原子接管」复用同一桶，无需清理任务。
 
 ## Wasp 集成
 
@@ -160,8 +164,8 @@ export const generateGptResponse = protectAiOperation(
 | 限流超限 | 429 | `{ message, retryAfterMs }` |
 | 额度不足（非订阅） | 402 | 沿用现有文案风格 |
 | OpenAI 失败 | 502 | 已退款 + 日志记 failed |
-| 去重命中 | 200 | 回放结果 + `deduplicated: true` |
-| 去重占位冲突（进行中） | 429 | `{ message, retryAfterMs }`，稍后重试 |
+| 去重命中 | 200 | 回放结果（复用已存 outputText） |
+| 去重占位冲突（进行中/接管失败） | 429 | `{ message, retryAfterMs }`，稍后重试 |
 | 未登录 | 401 | 现有行为不变 |
 
 ## 测试与验证
